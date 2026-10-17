@@ -13,12 +13,18 @@ services:
   backend:
     build: ./backend
     restart: unless-stopped
+    env_file:
+      - ./backend/.env
     environment:
       PORT: 4000
       MONGODB_URI: mongodb://mongo:27017/github_actions_monitoring
       GITHUB_TOKEN: ${GITHUB_TOKEN:-}
       GITHUB_WEBHOOK_SECRET: ${GITHUB_WEBHOOK_SECRET:-}
       API_KEY: ${API_KEY:-}
+      AUTH_MODE: ${AUTH_MODE:-github}
+      GITHUB_OAUTH_ALLOWED_USERS: ${GITHUB_OAUTH_ALLOWED_USERS:-}
+      GITHUB_OAUTH_REDIRECT_URI: ${GITHUB_OAUTH_REDIRECT_URI:-http://localhost:4000/api/auth/github/callback}
+      SESSION_SECRET: ${SESSION_SECRET:-}
       CLIENT_URL: http://localhost:5173
     ports:
       - "4000:4000"

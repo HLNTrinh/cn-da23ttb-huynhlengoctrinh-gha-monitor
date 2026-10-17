@@ -5,6 +5,7 @@ const links = [
   ['/repositories', 'Repositories'],
   ['/workflows', 'Workflows'],
   ['/runs', 'Workflow runs'],
+  ['/commits', 'Commits'],
   ['/statistics', 'Thống kê']
 ];
 

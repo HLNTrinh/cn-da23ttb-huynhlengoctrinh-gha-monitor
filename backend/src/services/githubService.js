@@ -4,6 +4,7 @@ import Workflow from '../models/Workflow.js';
 import WorkflowRun from '../models/WorkflowRun.js';
 import Job from '../models/Job.js';
 import Step from '../models/Step.js';
+import Commit from '../models/Commit.js';
 
 const perPage = 100;
 
@@ -94,9 +95,15 @@ export async function syncRepository(fullName) {
   }
 
   const octokit = getOctokit();
-  const [{ data: workflowData }, { data: runData }] = await Promise.all([
+  const [{ data: workflowData }, { data: runData }, { data: commitData }] = await Promise.all([
     octokit.actions.listRepoWorkflows({ owner: repository.owner, repo: repository.name, per_page: perPage }),
-    octokit.actions.listWorkflowRunsForRepo({ owner: repository.owner, repo: repository.name, per_page: perPage })
+    octokit.actions.listWorkflowRunsForRepo({ owner: repository.owner, repo: repository.name, per_page: perPage }),
+    octokit.repos.listCommits({
+      owner: repository.owner,
+      repo: repository.name,
+      sha: repository.defaultBranch,
+      per_page: perPage
+    })
   ]);
   const workflows = await Promise.all(workflowData.workflows.map((workflow) => Workflow.findOneAndUpdate(
     { githubId: workflow.id },
@@ -120,9 +127,53 @@ export async function syncRepository(fullName) {
     );
     await syncRunJobs(octokit, repository, savedRun, run.id);
   }
+
+  const currentShas = commitData.map((commit) => commit.sha);
+  const runsBySha = await WorkflowRun.find({
+    repository: repository._id,
+    commitSha: { $in: currentShas }
+  }).sort({ updatedAtGitHub: -1, createdAt: -1 }).lean();
+  const latestRunBySha = new Map();
+  for (const run of runsBySha) {
+    if (!latestRunBySha.has(run.commitSha)) latestRunBySha.set(run.commitSha, run);
+  }
+
+  const syncedCommits = commitData.filter((commit) => latestRunBySha.has(commit.sha));
+  if (syncedCommits.length) {
+    await Commit.bulkWrite(syncedCommits.map((commit) => {
+      const commitData = commit.commit;
+      const run = latestRunBySha.get(commit.sha);
+      return {
+        updateOne: {
+          filter: { repository: repository._id, sha: commit.sha },
+          update: {
+            $set: {
+              branch: repository.defaultBranch,
+              message: commitData.message,
+              author: commit.author?.login ?? commitData.author?.name ?? '',
+              committedAt: commitData.author?.date,
+              htmlUrl: commit.html_url,
+              workflowRun: run._id
+            }
+          },
+          upsert: true
+        }
+      };
+    }));
+  }
+  await Commit.deleteMany({
+    repository: repository._id,
+    sha: { $nin: syncedCommits.map((commit) => commit.sha) }
+  });
+
   repository.lastSyncedAt = new Date();
   await repository.save();
-  return { repository, workflowCount: workflows.length, runCount: runData.workflow_runs.length };
+  return {
+    repository,
+    workflowCount: workflows.length,
+    runCount: runData.workflow_runs.length,
+    commitCount: syncedCommits.length
+  };
 }
 
 export async function syncAll() {

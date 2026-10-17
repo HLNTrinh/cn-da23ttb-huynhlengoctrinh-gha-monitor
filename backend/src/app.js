@@ -10,10 +10,15 @@ import workflowRoutes from './routes/workflowRoutes.js';
 import workflowRunRoutes from './routes/workflowRunRoutes.js';
 import jobRoutes from './routes/jobRoutes.js';
 import statisticsRoutes from './routes/statisticsRoutes.js';
+import commitRoutes from './routes/commitRoutes.js';
+import authRoutes from './routes/authRoutes.js';
 
 const app = express();
 app.use(helmet());
-app.use(cors({ origin: process.env.CLIENT_URL?.split(',').map((url) => url.trim()) ?? 'http://localhost:5173' }));
+app.use(cors({
+  origin: process.env.CLIENT_URL?.split(',').map((url) => url.trim()) ?? 'http://localhost:5173',
+  credentials: true
+}));
 app.use(morgan('combined'));
 app.get('/api/health', (req, res) => res.json({ success: true, data: { status: 'ok' } }));
 
@@ -32,12 +37,14 @@ app.post('/api/webhooks/github', express.raw({ type: 'application/json' }), asyn
 });
 
 app.use(express.json({ limit: '1mb' }));
+app.use('/api/auth', authRoutes);
 app.use('/api', authMiddleware);
 app.use('/api/repositories', repositoryRoutes);
 app.use('/api/workflows', workflowRoutes);
 app.use('/api/runs', workflowRunRoutes);
 app.use('/api/jobs', jobRoutes);
 app.use('/api/statistics', statisticsRoutes);
+app.use('/api/commits', commitRoutes);
 app.use(notFoundMiddleware);
 app.use(errorMiddleware);
 

@@ -11,19 +11,28 @@ Dashboard theo dõi repository, workflow, workflow run, job và step của GitHu
    Copy-Item .env.example .env
    ```
 
-3. Khởi động:
+3. Tạo GitHub OAuth App trong **Settings → Developer settings → OAuth Apps**. Đặt Homepage URL là `http://localhost:5173` và Authorization callback URL là `http://localhost:4000/api/auth/github/callback`.
+4. Thêm Client ID, Client Secret, GitHub username được phép đăng nhập và session secret vào `.env` ở thư mục gốc.
+5. Khởi động:
 
    ```powershell
    docker compose up --build
    ```
 
-4. Mở giao diện tại <http://localhost:5173>, nhấn **Tải repositories**, sau đó **Đồng bộ tất cả**. API health check: <http://localhost:4000/api/health>.
+6. Mở giao diện tại <http://localhost:5173>, đăng nhập bằng GitHub, nhấn **Tải repositories**, sau đó **Đồng bộ tất cả**. API health check: <http://localhost:4000/api/health>.
+
+Tạo `SESSION_SECRET` ngẫu nhiên trong PowerShell bằng:
+
+```powershell
+[Convert]::ToBase64String((1..48 | ForEach-Object { Get-Random -Maximum 256 }))
+```
 
 ## Chạy cục bộ
 
 - Cài Node.js 20+ và MongoDB 7+.
-- Sao chép `backend/.env.example` thành `backend/.env`; điền `MONGODB_URI`, `GITHUB_TOKEN` và tùy chọn `API_KEY`.
-- Tạo `frontend/.env` từ `frontend/.env.example`. Nếu đã đặt `API_KEY` cho backend, đặt cùng giá trị vào `VITE_API_KEY`.
+- Sao chép `backend/.env.example` thành `backend/.env`; điền `MONGODB_URI`, `GITHUB_TOKEN` và các biến GitHub OAuth.
+- Tạo GitHub OAuth App với callback URL `http://localhost:4000/api/auth/github/callback`; trong `backend/.env` điền Client ID, Client Secret, username được phép và một `SESSION_SECRET` ngẫu nhiên.
+- Tạo `frontend/.env` từ `frontend/.env.example`. `VITE_API_KEY` chỉ cần thiết khi dùng chế độ cũ `AUTH_MODE=none` cùng API key.
 - Cài dependency và chạy hai tiến trình trong cửa sổ PowerShell riêng:
 
   ```powershell
@@ -40,10 +49,18 @@ Dashboard theo dõi repository, workflow, workflow run, job và step của GitHu
 
 ## Cấu hình
 
+Khi `AUTH_MODE=github`, dashboard yêu cầu phiên OAuth cookie; `API_KEY` chỉ được dùng ở chế độ `AUTH_MODE=none`.
+
 | Biến | Mô tả |
 |---|---|
 | `MONGODB_URI` | MongoDB connection string |
 | `GITHUB_TOKEN` | Token dùng để đọc repositories, workflows, runs và jobs |
+| `AUTH_MODE` | `github` để bắt buộc đăng nhập OAuth (mặc định); `none` để tắt OAuth |
+| `GITHUB_OAUTH_CLIENT_ID` / `GITHUB_OAUTH_CLIENT_SECRET` | Credentials của GitHub OAuth App; chỉ đặt trong backend |
+| `GITHUB_OAUTH_ALLOWED_USERS` | Danh sách username GitHub được phép, phân cách bằng dấu phẩy |
+| `GITHUB_OAUTH_REDIRECT_URI` | Callback URL OAuth; mặc định `http://localhost:4000/api/auth/github/callback` |
+| `SESSION_SECRET` | Khóa ký cookie phiên đăng nhập, tối thiểu 32 ký tự ngẫu nhiên |
+| `NODE_ENV` | Đặt `production` trên HTTPS để cookie phiên đăng nhập chỉ được gửi qua kết nối bảo mật |
 | `API_KEY` | Tùy chọn; nếu đặt, API yêu cầu header `Authorization: Bearer <API_KEY>` |
 | `GITHUB_WEBHOOK_SECRET` | Secret dùng để xác thực chữ ký webhook |
 | `CLIENT_URL` | Origin frontend được phép gọi API (có thể phân cách nhiều origin bằng dấu phẩy) |
@@ -54,10 +71,12 @@ Không đưa `.env`, token GitHub hoặc API key vào Git. Không dùng API key 
 ## API tiêu biểu
 
 - `GET /api/health`
+- `GET /api/auth/me`, `GET /api/auth/github`, `GET /api/auth/github/callback`, `POST /api/auth/logout`
 - `GET /api/repositories`, `POST /api/repositories/sync`, `POST /api/repositories/sync-all`
 - `GET /api/repositories/:owner/:repo`, `POST /api/repositories/:owner/:repo/sync`
 - `GET /api/workflows`, `GET /api/workflows/:id`
 - `GET /api/runs?page=1&limit=25`, `GET /api/runs/:id`
+- `GET /api/commits?page=1&limit=25` — tối đa 100 commit mới nhất trên nhánh mặc định của mỗi repository, chỉ khi commit có workflow run tương ứng.
 - `GET /api/jobs/run/:runId`, `GET /api/jobs/:id`
 - `GET /api/statistics`
 - `POST /api/webhooks/github` — sự kiện `workflow_run` và `workflow_job`; phải cấu hình secret trùng `GITHUB_WEBHOOK_SECRET`.
