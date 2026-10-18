@@ -10,6 +10,7 @@ function formatDate(value) {
 }
 
 export default function Commits() {
+  const [page, setPage] = useState(1);
   const [data, setData] = useState(null);
   const [loading, setLoading] = useState(true);
   const [syncing, setSyncing] = useState(false);
@@ -19,7 +20,7 @@ export default function Commits() {
     setLoading(true);
     setError('');
     try {
-      setData(await getCommits(1, 1, repository));
+      setData(await getCommits(page, 25, repository));
     } catch (cause) {
       setError(cause.message);
     } finally {
@@ -27,7 +28,7 @@ export default function Commits() {
     }
   }
 
-  useEffect(() => { load(); }, []);
+  useEffect(() => { load(); }, [page]);
 
   async function handleSync() {
     setSyncing(true);
@@ -49,14 +50,14 @@ export default function Commits() {
       </section>
       <section className="panel">
         <div className="panel-heading">
-          <div><h2>Commit mới nhất</h2><p className="muted">{repository}</p></div>
+          <div><h2>Tổng hợp commits</h2><p className="muted">{repository} · lịch sử trên nhánh mặc định</p></div>
           <div className="button-row">
-            {data && <span className="commit-total">{data.total ? 'Commit mới nhất' : 'Chưa có commit'}</span>}
+            {data && <span className="commit-total">{data.total} commits</span>}
             <button className="button primary" disabled={syncing || loading} onClick={handleSync}>{syncing ? 'Đang đồng bộ…' : 'Đồng bộ commits'}</button>
           </div>
         </div>
         {error ? <ErrorState message={error} /> : loading || !data ? <Loading /> : data.items.length === 0 ? (
-          <div className="empty-state">Chưa có commit. Nhấn “Đồng bộ commits” để lấy commit mới nhất từ GitHub.</div>
+          <div className="empty-state">Chưa có commit. Nhấn “Đồng bộ commits” để lấy lịch sử từ GitHub.</div>
         ) : (
           <>
             <div className="table-wrap">
@@ -80,6 +81,13 @@ export default function Commits() {
                   </tr>
                 ))}</tbody>
               </table>
+            </div>
+            <div className="commit-pagination">
+              <span className="table-summary">Trang {data.page} / {Math.max(1, data.pages)} · {data.total} commits</span>
+              <div className="button-row">
+                <button className="button secondary" disabled={page <= 1 || loading} onClick={() => setPage((current) => current - 1)}>Trước</button>
+                <button className="button secondary" disabled={page >= data.pages || loading} onClick={() => setPage((current) => current + 1)}>Sau</button>
+              </div>
             </div>
           </>
         )}
