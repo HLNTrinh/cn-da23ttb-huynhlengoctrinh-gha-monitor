@@ -11,7 +11,12 @@ const perPage = 100;
 export async function syncRepositories() {
   const octokit = getOctokit();
   const { data } = await octokit.repos.listForAuthenticatedUser({ per_page: perPage, sort: 'updated' });
-  const repositories = await Promise.all(data.map((repo) => Repository.findOneAndUpdate(
+  const repositories = await Promise.all(data.map(saveRepository));
+  return repositories;
+}
+
+function saveRepository(repo) {
+  return Repository.findOneAndUpdate(
     { githubId: repo.id },
     {
       owner: repo.owner.login,
@@ -23,8 +28,7 @@ export async function syncRepositories() {
       isPrivate: repo.private
     },
     { upsert: true, new: true, setDefaultsOnInsert: true }
-  )));
-  return repositories;
+  );
 }
 
 function mapRun(run, repository, workflow) {
@@ -95,15 +99,9 @@ export async function syncRepository(fullName) {
   }
 
   const octokit = getOctokit();
-  const [{ data: workflowData }, { data: runData }, { data: commitData }] = await Promise.all([
+  const [{ data: workflowData }, { data: runData }] = await Promise.all([
     octokit.actions.listRepoWorkflows({ owner: repository.owner, repo: repository.name, per_page: perPage }),
-    octokit.actions.listWorkflowRunsForRepo({ owner: repository.owner, repo: repository.name, per_page: perPage }),
-    octokit.repos.listCommits({
-      owner: repository.owner,
-      repo: repository.name,
-      sha: repository.defaultBranch,
-      per_page: perPage
-    })
+    octokit.actions.listWorkflowRunsForRepo({ owner: repository.owner, repo: repository.name, per_page: perPage })
   ]);
   const workflows = await Promise.all(workflowData.workflows.map((workflow) => Workflow.findOneAndUpdate(
     { githubId: workflow.id },
@@ -128,43 +126,7 @@ export async function syncRepository(fullName) {
     await syncRunJobs(octokit, repository, savedRun, run.id);
   }
 
-  const currentShas = commitData.map((commit) => commit.sha);
-  const runsBySha = await WorkflowRun.find({
-    repository: repository._id,
-    commitSha: { $in: currentShas }
-  }).sort({ updatedAtGitHub: -1, createdAt: -1 }).lean();
-  const latestRunBySha = new Map();
-  for (const run of runsBySha) {
-    if (!latestRunBySha.has(run.commitSha)) latestRunBySha.set(run.commitSha, run);
-  }
-
-  const syncedCommits = commitData.filter((commit) => latestRunBySha.has(commit.sha));
-  if (syncedCommits.length) {
-    await Commit.bulkWrite(syncedCommits.map((commit) => {
-      const commitData = commit.commit;
-      const run = latestRunBySha.get(commit.sha);
-      return {
-        updateOne: {
-          filter: { repository: repository._id, sha: commit.sha },
-          update: {
-            $set: {
-              branch: repository.defaultBranch,
-              message: commitData.message,
-              author: commit.author?.login ?? commitData.author?.name ?? '',
-              committedAt: commitData.author?.date,
-              htmlUrl: commit.html_url,
-              workflowRun: run._id
-            }
-          },
-          upsert: true
-        }
-      };
-    }));
-  }
-  await Commit.deleteMany({
-    repository: repository._id,
-    sha: { $nin: syncedCommits.map((commit) => commit.sha) }
-  });
+  const commitCount = await syncCommitHistoryForRepository(octokit, repository);
 
   repository.lastSyncedAt = new Date();
   await repository.save();
@@ -172,8 +134,62 @@ export async function syncRepository(fullName) {
     repository,
     workflowCount: workflows.length,
     runCount: runData.workflow_runs.length,
-    commitCount: syncedCommits.length
+    commitCount
   };
+}
+
+async function syncCommitHistoryForRepository(octokit, repository) {
+  const commits = await octokit.paginate(octokit.repos.listCommits, {
+    owner: repository.owner,
+    repo: repository.name,
+    sha: repository.defaultBranch,
+    per_page: perPage
+  });
+  const latestRuns = await WorkflowRun.find({ repository: repository._id })
+    .sort({ updatedAtGitHub: -1, createdAt: -1 })
+    .select('githubId commitSha')
+    .lean();
+  const latestRunBySha = new Map();
+  for (const run of latestRuns) {
+    if (!latestRunBySha.has(run.commitSha)) latestRunBySha.set(run.commitSha, run);
+  }
+
+  for (let offset = 0; offset < commits.length; offset += 500) {
+    const batch = commits.slice(offset, offset + 500);
+    await Commit.bulkWrite(batch.map((commit) => ({
+      updateOne: {
+        filter: { repository: repository._id, sha: commit.sha },
+        update: {
+          $set: {
+            branch: repository.defaultBranch,
+            message: commit.commit.message,
+            author: commit.author?.login ?? commit.commit.author?.name ?? '',
+            committedAt: commit.commit.author?.date,
+            htmlUrl: commit.html_url,
+            workflowRun: latestRunBySha.get(commit.sha)?._id ?? null
+          }
+        },
+        upsert: true
+      }
+    })));
+  }
+  return commits.length;
+}
+
+export async function syncCommitHistory(fullName) {
+  const [owner, name, ...extra] = fullName.split('/');
+  if (!owner || !name || extra.length) {
+    const error = new Error('Repository must use the owner/name format');
+    error.status = 400;
+    throw error;
+  }
+  const octokit = getOctokit();
+  const { data } = await octokit.repos.get({ owner, repo: name });
+  const repository = await saveRepository(data);
+  const commitCount = await syncCommitHistoryForRepository(octokit, repository);
+  repository.lastSyncedAt = new Date();
+  await repository.save();
+  return { repository: repository.fullName, commitCount };
 }
 
 export async function syncAll() {

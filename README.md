@@ -7,6 +7,7 @@ Dashboard theo dõi repository, workflow, workflow run, job và step của GitHu
 - Đăng nhập GitHub OAuth và giới hạn người dùng được phép truy cập.
 - Lấy repository mà GitHub token có quyền đọc.
 - Đồng bộ workflow, workflow run, job và step.
+- Đồng bộ lịch sử commit trên nhánh mặc định của các repository đã kết nối, kể cả commit chưa chạy workflow.
 - Theo dõi thống kê và lịch sử chạy workflow trên dashboard.
 - Nhận sự kiện GitHub webhook cho `workflow_run` và `workflow_job`.
 
@@ -115,7 +116,8 @@ Các endpoint tiêu biểu:
 | `GET` | `/api/workflows/:id` | Chi tiết workflow. |
 | `GET` | `/api/runs?page=1&limit=25` | Danh sách workflow run có phân trang. |
 | `GET` | `/api/runs/:id` | Chi tiết run, kèm jobs và steps. |
-| `GET` | `/api/commits?page=1&limit=25` | Danh sách commit liên quan workflow run. |
+| `GET` | `/api/commits?page=1&limit=25&repository=owner/name` | Danh sách commit từ lịch sử repository, có thể lọc theo repository. |
+| `POST` | `/api/commits/sync` | Đồng bộ lịch sử commit nhánh mặc định từ repository GitHub; JSON body: `{"repository":"owner/name"}`. |
 | `GET` | `/api/jobs/run/:runId` | Jobs của một run. |
 | `GET` | `/api/jobs/:id` | Chi tiết job và steps. |
 | `GET` | `/api/statistics` | Thống kê workflow. |

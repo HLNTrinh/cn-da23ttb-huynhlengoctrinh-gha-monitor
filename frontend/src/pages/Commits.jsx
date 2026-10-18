@@ -1,41 +1,62 @@
 import { useEffect, useState } from 'react';
 import { ErrorState, Loading } from '../components/PageState.jsx';
 import RunStatus from '../components/RunStatus.jsx';
-import { getCommits } from '../services/workflowApi.js';
+import { getCommits, syncCommits } from '../services/workflowApi.js';
+
+const repository = 'HLNTrinh/cn-da23ttb-huynhlengoctrinh-gha-monitor';
 
 function formatDate(value) {
   return value ? new Date(value).toLocaleString('vi-VN') : '—';
 }
 
 export default function Commits() {
-  const [page, setPage] = useState(1);
   const [data, setData] = useState(null);
   const [loading, setLoading] = useState(true);
+  const [syncing, setSyncing] = useState(false);
   const [error, setError] = useState('');
 
-  useEffect(() => {
-    let active = true;
+  async function load() {
     setLoading(true);
     setError('');
-    getCommits(page)
-      .then((result) => { if (active) setData(result); })
-      .catch((cause) => { if (active) setError(cause.message); })
-      .finally(() => { if (active) setLoading(false); });
-    return () => { active = false; };
-  }, [page]);
+    try {
+      setData(await getCommits(1, 1, repository));
+    } catch (cause) {
+      setError(cause.message);
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  useEffect(() => { load(); }, []);
+
+  async function handleSync() {
+    setSyncing(true);
+    setError('');
+    try {
+      await syncCommits(repository);
+      await load();
+    } catch (cause) {
+      setError(cause.message);
+    } finally {
+      setSyncing(false);
+    }
+  }
 
   return (
     <>
       <section className="page-intro">
-        <p className="muted">Các commit đã được ghi nhận qua GitHub Actions workflow runs.</p>
+        <p className="muted">Lịch sử commit của {repository} trên nhánh mặc định.</p>
       </section>
       <section className="panel">
         <div className="panel-heading">
-          <div><h2>Commits đã đồng bộ</h2><p className="muted">Mỗi commit chỉ hiển thị một lần cho mỗi repository.</p></div>
-          {data && <span className="commit-total">{data.total} commits</span>}
+          <div><h2>Commit mới nhất</h2><p className="muted">{repository}</p></div>
+          <div className="button-row">
+            {data && <span className="commit-total">{data.total ? 'Commit mới nhất' : 'Chưa có commit'}</span>}
+            <button className="button primary" disabled={syncing || loading} onClick={handleSync}>{syncing ? 'Đang đồng bộ…' : 'Đồng bộ commits'}</button>
+          </div>
         </div>
         {error ? <ErrorState message={error} /> : loading || !data ? <Loading /> : data.items.length === 0 ? (
-          <div className="empty-state">Chưa có commit. Hãy đồng bộ workflow runs của repository trước.</div>
+          <div className="empty-state">Chưa có commit. Nhấn “Đồng bộ commits” để lấy commit mới nhất từ GitHub.</div>
         ) : (
           <>
             <div className="table-wrap">
@@ -47,23 +68,18 @@ export default function Commits() {
                     <td>{commit.repository.fullName}</td>
                     <td><code>{commit.branch || '—'}</code></td>
                     <td>
-                      <a className="primary-link" href={commit.htmlUrl} target="_blank" rel="noreferrer">
-                        {commit.workflow?.name || 'Workflow run'} #{commit.runNumber}
-                      </a>
-                      <span className="commit-status"><RunStatus run={commit} /></span>
+                      {commit.runHtmlUrl ? <>
+                        <a className="primary-link" href={commit.runHtmlUrl} target="_blank" rel="noreferrer">
+                          {commit.workflow?.name || 'Workflow run'} #{commit.runNumber}
+                        </a>
+                        <span className="commit-status"><RunStatus run={commit} /></span>
+                      </> : <span className="muted">Chưa chạy workflow</span>}
                     </td>
                     <td>{commit.actor || '—'}</td>
                     <td>{formatDate(commit.createdAt)}</td>
                   </tr>
                 ))}</tbody>
               </table>
-            </div>
-            <div className="commit-pagination">
-              <span className="table-summary">Trang {data.page} / {Math.max(1, data.pages)} · {data.total} commits</span>
-              <div className="button-row">
-                <button className="button secondary" disabled={page <= 1 || loading} onClick={() => setPage((current) => current - 1)}>Trước</button>
-                <button className="button secondary" disabled={page >= data.pages || loading} onClick={() => setPage((current) => current + 1)}>Sau</button>
-              </div>
             </div>
           </>
         )}

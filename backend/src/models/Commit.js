@@ -8,7 +8,7 @@ const commitSchema = new mongoose.Schema({
   author: { type: String, default: '' },
   committedAt: Date,
   htmlUrl: { type: String, default: '' },
-  workflowRun: { type: mongoose.Schema.Types.ObjectId, ref: 'WorkflowRun', required: true }
+  workflowRun: { type: mongoose.Schema.Types.ObjectId, ref: 'WorkflowRun', default: null }
 }, { timestamps: true });
 
 commitSchema.index({ repository: 1, sha: 1 }, { unique: true });

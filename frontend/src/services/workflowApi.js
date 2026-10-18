@@ -11,3 +11,7 @@ export const getCommits = (page = 1, limit = 25, repository = '') => {
   if (repository) params.set('repository', repository);
   return request(`/commits?${params}`);
 };
+export const syncCommits = (repository) => request('/commits/sync', {
+  method: 'POST',
+  body: JSON.stringify({ repository })
+});

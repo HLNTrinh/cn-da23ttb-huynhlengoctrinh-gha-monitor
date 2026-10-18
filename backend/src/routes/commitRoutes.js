@@ -1,6 +1,7 @@
 import { Router } from 'express';
-import { listCommits } from '../controllers/commitController.js';
+import { listCommits, refreshCommitHistory } from '../controllers/commitController.js';
 
 const router = Router();
+router.post('/sync', refreshCommitHistory);
 router.get('/', listCommits);
 export default router;
