@@ -5,14 +5,15 @@ Dashboard theo dõi repository, workflow, workflow run, job và step của GitHu
 ## Chạy nhanh với Docker
 
 1. Cài Docker Desktop và tạo Personal Access Token GitHub có quyền đọc metadata, repository và Actions. Với fine-grained token, cấp **Metadata: read**, **Contents: read** và **Actions: read** cho các repository cần theo dõi.
-2. Tạo file `.env` ở thư mục gốc từ mẫu bên dưới và điền token:
+2. Tạo các file cấu hình từ mẫu:
 
    ```powershell
    Copy-Item .env.example .env
+   Copy-Item backend\.env.example backend\.env
    ```
 
 3. Tạo GitHub OAuth App trong **Settings → Developer settings → OAuth Apps**. Đặt Homepage URL là `http://localhost:5173` và Authorization callback URL là `http://localhost:4000/api/auth/github/callback`.
-4. Thêm Client ID, Client Secret, GitHub username được phép đăng nhập và session secret vào `.env` ở thư mục gốc.
+4. Điền `GITHUB_TOKEN`, `GITHUB_OAUTH_ALLOWED_USERS` và `SESSION_SECRET` trong file `.env` ở thư mục gốc. Điền Client ID và Client Secret của OAuth App trong `backend\.env`.
 5. Khởi động:
 
    ```powershell
