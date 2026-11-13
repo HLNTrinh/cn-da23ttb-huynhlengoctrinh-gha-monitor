@@ -4,8 +4,11 @@ import { ErrorState, Loading } from '../components/PageState.jsx';
 import WorkflowTable from '../components/WorkflowTable.jsx';
 import { getRepository, syncRepository } from '../services/repositoryApi.js';
 import { getRuns, getWorkflows } from '../services/workflowApi.js';
+import { useAuth } from '../auth/AuthContext.jsx';
 
 export default function RepositoryDetail() {
+  const { session } = useAuth();
+  const isAdmin = session?.user?.role === 'admin';
   const { fullName } = useParams();
   const [data, setData] = useState(null);
   const [workflows, setWorkflows] = useState([]);
@@ -27,7 +30,7 @@ export default function RepositoryDetail() {
   if (!data && !error) return <Loading />;
   if (error && !data) return <ErrorState message={error} />;
   return <>
-    <section className="detail-hero"><div><Link className="text-link" to="/repositories">← Repositories</Link><h2>{data.fullName}</h2><p className="muted">{data.description || 'Không có mô tả'}</p></div><button className="button primary" disabled={working} onClick={refresh}>{working ? 'Đang đồng bộ…' : 'Đồng bộ'}</button></section>
+    <section className="detail-hero"><div><Link className="text-link" to="/repositories">← Repositories</Link><h2>{data.fullName}</h2><p className="muted">{data.description || 'Không có mô tả'}</p></div>{isAdmin && <button className="button primary" disabled={working} onClick={refresh}>{working ? 'Đang đồng bộ…' : 'Đồng bộ'}</button>}</section>
     {error && <ErrorState message={error} />}
     <div className="inline-stats"><span><strong>{workflows.length}</strong> workflows</span><span><strong>{data.runCount}</strong> runs</span><a href={data.htmlUrl} target="_blank" rel="noreferrer">Mở trên GitHub ↗</a></div>
     <section className="panel"><div className="panel-heading"><div><h2>Workflows</h2></div></div>{workflows.length ? <div className="workflow-list">{workflows.map((workflow) => <Link key={workflow._id} to={`/workflows/${workflow._id}`}><span>{workflow.name}</span><code>{workflow.path}</code><span className="badge badge-success">{workflow.state}</span></Link>)}</div> : <div className="empty-state">Chưa có workflow được ghi nhận.</div>}</section>
